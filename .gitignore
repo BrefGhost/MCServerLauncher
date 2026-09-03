@@ -1,0 +1,23 @@
+# Secrets and per-machine state. data/playit_secret.txt is the key to the
+# user's playit.gg account - it must never reach a repository.
+/data/
+/cache/
+/logs/
+
+# Real Minecraft servers and their worlds: gigabytes, and personal save data.
+/servers/
+
+# Build output. The exe is published as a release asset, not committed.
+/build/
+/dist/
+*.spec.bak
+
+# Local tooling
+__pycache__/
+*.py[cod]
+node_modules/
+package-lock.json
+/docs/preview/
+
+# Bundled at build time from assets/icon.png
+/assets/icon@1024.png
