@@ -139,6 +139,9 @@ class Session:
             sync.full_sync(inst.path, self.server_dir, inst.slug,
                            force_config=False, log=self.on_log)
 
+        if self.settings.use_tunnel:
+            serverconf.relax_proxy_filters(self.server_dir, log=self.on_log)
+
         serverconf.write_eula(self.server_dir, self.eula_accepted)
         serverconf.write_properties(self.server_dir, self.settings, inst.name)
         serverconf.write_ops(self.server_dir, self.settings.ops)

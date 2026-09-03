@@ -71,6 +71,42 @@ def write_ops(server_dir: Path, names: list[str]) -> None:
         json.dumps(entries, indent=2), encoding="utf-8")
 
 
+def relax_proxy_filters(server_dir: Path, log=None) -> list[str]:
+    """Stop pack mods from treating the tunnel as an attacker.
+
+    The Connectivity mod (shipped by most large packs) drops traffic from any
+    address not in its `proxywhitelist`, which is empty by default. Behind
+    playit every player arrives from a 127.x address the tunnel makes up, so
+    the filter silently stalls logins until the client gives up - a player just
+    sees "Logging in..." forever, and nothing is written to the server log.
+
+    The whitelist is compared by exact string, and the made-up address differs
+    per player, so listing addresses cannot work; the filter has to be off.
+    Turning it off leaves the server exactly as it would be without the mod.
+    """
+    changed: list[str] = []
+    path = server_dir / "config" / "connectivity.json"
+    if not path.is_file():
+        return changed
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        section = data.get("malformedtraffic")
+        if isinstance(section, dict) and section.get("enabled"):
+            backup = path.with_suffix(".json.bak")
+            if not backup.exists():
+                backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+            section["enabled"] = False
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            changed.append("connectivity: ปิดตัวกรอง traffic ที่บล็อก IP ของ tunnel")
+    except (OSError, ValueError):
+        return changed
+
+    if log and changed:
+        for item in changed:
+            log(f"ปรับค่าเซิร์ฟเวอร์ — {item}")
+    return changed
+
+
 def jvm_args(ram_gb: int) -> list[str]:
     xms = max(1, ram_gb // 2)
     return [f"-Xms{xms}G", f"-Xmx{ram_gb}G",
