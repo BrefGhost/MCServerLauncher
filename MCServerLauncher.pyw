@@ -31,6 +31,17 @@ MUTED = "#9aa0ad"
 ACCENT = "#4ea36a"
 DANGER = "#c9524b"
 CONSOLE_BG = "#131519"
+
+# Where people can reach the developer. Kept together so there is one place to
+# change if a link ever moves.
+CONTACT_LINKS = [
+    ("โพสต์แนะนำโปรแกรม (Facebook)",
+     "https://www.facebook.com/share/p/19eToA261T/"),
+    ("ทักผู้พัฒนา (Facebook)",
+     "https://www.facebook.com/doxx.ing.2025/?locale=th_TH"),
+    ("แจ้งปัญหาบน GitHub",
+     "https://github.com/BrefGhost/MCServerLauncher/issues"),
+]
 FONT = ("Leelawadee UI", 10)
 FONT_BOLD = ("Leelawadee UI", 10, "bold")
 FONT_TITLE = ("Leelawadee UI", 15, "bold")
@@ -166,7 +177,10 @@ class App(dnd.tk_base()):
         ttk.Button(header, text="สแกนใหม่", command=self.refresh_instances).pack(side="right", padx=6)
         ttk.Button(header, text="เพิ่มโฟลเดอร์…",
                    command=self.add_instance_folder).pack(side="right", padx=6)
-        ttk.Button(header, text="คู่มือ", command=self.open_manual).pack(side="right")
+        ttk.Button(header, text="คู่มือ",
+                   command=self.open_manual).pack(side="right", padx=6)
+        ttk.Button(header, text="ฟีดแบ็ก",
+                   command=self.open_feedback).pack(side="right")
 
         self._build_left(root)
         self._build_right(root)
@@ -720,6 +734,55 @@ class App(dnd.tk_base()):
         self.on_pack_changed()
         self.log(f"เพิ่มโฟลเดอร์แล้ว เจอ modpack {len(added)} ตัว: "
                  + ", ".join(i.name for i in added[:5]), "ok")
+
+    def open_feedback(self) -> None:
+        """Contact links, plus the log the developer will ask for anyway."""
+        win = tk.Toplevel(self)
+        win.title("ฟีดแบ็ก / ติดต่อผู้พัฒนา")
+        win.configure(bg=PANEL)
+        win.resizable(False, False)
+        win.transient(self)
+
+        frame = tk.Frame(win, bg=PANEL, padx=22, pady=18)
+        frame.pack(fill="both", expand=True)
+
+        tk.Label(frame, text="เจอบั๊ก หรืออยากเสนออะไร?", bg=PANEL, fg=FG,
+                 font=FONT_BOLD).pack(anchor="w")
+        tk.Label(frame, text="ทักมาได้เลยตามช่องทางด้านล่าง", bg=PANEL, fg=MUTED,
+                 font=FONT).pack(anchor="w", pady=(2, 14))
+
+        for text, url in CONTACT_LINKS:
+            row = tk.Frame(frame, bg=PANEL)
+            row.pack(anchor="w", fill="x", pady=3)
+            tk.Label(row, text="•", bg=PANEL, fg=ACCENT, font=FONT).pack(side="left")
+            link = tk.Label(row, text=text, bg=PANEL, fg="#7aa7ff", cursor="hand2",
+                            font=FONT)
+            link.pack(side="left", padx=(6, 0))
+            link.bind("<Button-1>", lambda e, u=url: webbrowser.open(u))
+            link.bind("<Enter>", lambda e, w=link: w.config(font=(FONT[0], FONT[1],
+                                                                 "underline")))
+            link.bind("<Leave>", lambda e, w=link: w.config(font=FONT))
+
+        tk.Label(frame,
+                 text="ถ้าแจ้งปัญหา แนบไฟล์บันทึกมาด้วยจะหาสาเหตุได้เร็วขึ้นมาก",
+                 bg=PANEL, fg=MUTED, font=FONT, wraplength=380,
+                 justify="left").pack(anchor="w", pady=(16, 8))
+
+        buttons = tk.Frame(frame, bg=PANEL)
+        buttons.pack(anchor="w", fill="x")
+        ttk.Button(buttons, text="เปิดโฟลเดอร์บันทึก",
+                   command=self.open_logs_folder).pack(side="left")
+        ttk.Button(buttons, text="ปิด", command=win.destroy).pack(side="right")
+
+        win.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - win.winfo_width()) // 2
+        y = self.winfo_rooty() + 140
+        win.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+        win.grab_set()
+
+    def open_logs_folder(self) -> None:
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        os.startfile(LOGS_DIR)                                # noqa: S606
 
     def open_manual(self) -> None:
         """Open the bundled manual, or the online one if it is missing."""

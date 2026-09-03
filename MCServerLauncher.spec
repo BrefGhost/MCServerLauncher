@@ -52,5 +52,5 @@ exe = EXE(
     runtime_tmpdir=None,
     console=False,                 # a window app: no black console box
     icon=str(PROJECT / "assets" / "icon.ico"),
-    version_info=None,
+    version=str(PROJECT / "version_info.txt"),
 )

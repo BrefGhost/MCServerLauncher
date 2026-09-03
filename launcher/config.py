@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
 APP_NAME = "MC Server Launcher"
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 
 
 def _shared_folders() -> set[Path]:
