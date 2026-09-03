@@ -17,8 +17,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from launcher import instances as inst_mod                      # noqa: E402
 from launcher import autoheal, dnd, sync, tunnel                # noqa: E402
-from launcher.config import (APP_NAME, APP_VERSION, LOGS_DIR,  # noqa: E402
-                             SERVERS_DIR, PackSettings, Settings, ensure_dirs)
+from launcher.config import (APP_DIR, APP_NAME, APP_VERSION,  # noqa: E402
+                             LOGS_DIR, SERVERS_DIR, PackSettings, Settings,
+                             ensure_dirs)
 from launcher.session import Session                            # noqa: E402
 
 BG = "#1b1d23"
@@ -383,8 +384,25 @@ class App(dnd.tk_base()):
         self.console.tag_configure("ok", foreground="#6fc98a")
         self.console.tag_configure("sys", foreground="#7aa7ff")
 
+        where = ttk.Frame(right)
+        where.grid(row=4, column=0, sticky="ew", pady=(8, 0))
+        ttk.Label(where, text="เซิร์ฟเวอร์และโลกเก็บไว้ที่",
+                  style="Muted.TLabel").pack(side="left")
+        location = tk.Label(where, text=str(APP_DIR), bg=BG, fg="#7aa7ff",
+                            cursor="hand2", font=FONT)
+        location.pack(side="left", padx=(6, 0))
+        location.bind("<Button-1>", lambda e: self.open_data_folder())
+        Hint(where, "ทุกอย่างที่โปรแกรมสร้างขึ้นอยู่ในโฟลเดอร์นี้"
+             + NL + NL +
+             "ถ้าเปิดโปรแกรมจากโฟลเดอร์ Downloads หรือหน้า Desktop โปรแกรมจะไม่ทิ้งไฟล์"
+             "ไว้ปนกับของคุณ แต่จะสร้างโฟลเดอร์ของตัวเองไว้ใน Documents แทน"
+             + NL + NL +
+             "ถ้าอยากเก็บไว้ที่อื่น ให้ย้ายไฟล์ .exe ไปไว้ในโฟลเดอร์ว่าง ๆ "
+             "ที่ต้องการแล้วเปิดจากตรงนั้น"
+             ).pack(side="left", padx=(6, 0))
+
         cmd = ttk.Frame(right)
-        cmd.grid(row=4, column=0, sticky="ew", pady=(8, 0))
+        cmd.grid(row=5, column=0, sticky="ew", pady=(8, 0))
         cmd.columnconfigure(0, weight=1)
         self.cmd_var = tk.StringVar()
         entry = ttk.Entry(cmd, textvariable=self.cmd_var, font=FONT_MONO)
@@ -578,7 +596,8 @@ class App(dnd.tk_base()):
             (LOGS_DIR / "startup.log").write_text(
                 f"{APP_NAME} {APP_VERSION}\n"
                 f"frozen={getattr(sys, 'frozen', False)}\n"
-                f"drag_and_drop={'ok' if ok else 'unavailable'}\n",
+                f"drag_and_drop={'ok' if ok else 'unavailable'}\n"
+                f"data_dir={APP_DIR}\n",
                 encoding="utf-8")
         except OSError:
             pass
@@ -653,6 +672,10 @@ class App(dnd.tk_base()):
                     os.startfile(doc)                      # noqa: S606
                     return
         webbrowser.open("https://github.com/BrefGhost/MCServerLauncher")
+
+    def open_data_folder(self) -> None:
+        APP_DIR.mkdir(parents=True, exist_ok=True)
+        os.startfile(APP_DIR)                                 # noqa: S606
 
     def open_server_folder(self) -> None:
         inst = self.current_instance()

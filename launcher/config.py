@@ -8,17 +8,61 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
 APP_NAME = "MC Server Launcher"
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 
-# Root of the launcher installation.
-#
-# Frozen into an exe, this module lives in a temporary folder that Windows
-# deletes on exit - servers and worlds written there would vanish every run.
-# Next to the exe is where the user expects their files, so that is the root.
-if getattr(sys, "frozen", False):
-    APP_DIR = Path(sys.executable).resolve().parent
-else:
-    APP_DIR = Path(__file__).resolve().parent.parent
+
+def _shared_folders() -> set[Path]:
+    """Folders that belong to the user, not to any one program."""
+    home = Path(os.path.expanduser("~"))
+    names = ("Downloads", "Desktop", "Documents", "Pictures", "Videos", "Music")
+    folders = {home}
+    for base in (home, home / "OneDrive"):
+        folders.update(base / n for n in names)
+    folders.update(Path(p) for p in (os.environ.get("ProgramFiles", ""),
+                                     os.environ.get("ProgramFiles(x86)", ""),
+                                     os.environ.get("SystemRoot", "")) if p)
+    resolved = set()
+    for folder in folders:
+        try:
+            resolved.add(folder.resolve())
+        except OSError:
+            pass
+    return resolved
+
+
+def _documents() -> Path:
+    home = Path(os.path.expanduser("~"))
+    onedrive = home / "OneDrive" / "Documents"
+    return onedrive if onedrive.is_dir() else home / "Documents"
+
+
+def _resolve_app_dir() -> Path:
+    """Where servers, worlds and settings live.
+
+    Run as a script it is the project folder. Frozen into an exe it cannot be
+    the folder this module sits in - Windows deletes that on exit - so it is
+    the folder holding the exe, with one exception.
+
+    People download a bare exe and run it straight from Downloads, and a
+    Minecraft server is gigabytes of folders. Scattering `servers/`, `data/`,
+    `cache/` and `logs/` through someone's Downloads or Desktop is not
+    something a program should do uninvited, so from those folders it makes one
+    folder of its own under Documents instead.
+    """
+    if not getattr(sys, "frozen", False):
+        return Path(__file__).resolve().parent.parent
+
+    exe_dir = Path(sys.executable).resolve().parent
+    # An earlier run already put data beside the exe: keep using it rather than
+    # stranding worlds somewhere the user will never think to look.
+    if any((exe_dir / name).is_dir() for name in ("servers", "data")):
+        return exe_dir
+    if exe_dir in _shared_folders() or str(exe_dir) == exe_dir.anchor:
+        return _documents() / APP_NAME
+    return exe_dir
+
+
+APP_DIR = _resolve_app_dir()
 DATA_DIR = APP_DIR / "data"
 CACHE_DIR = APP_DIR / "cache"
 SERVERS_DIR = APP_DIR / "servers"
