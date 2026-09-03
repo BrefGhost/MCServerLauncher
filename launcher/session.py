@@ -246,10 +246,19 @@ class Session:
             self.agent.wait_until_ready(timeout=90)
 
             self.on_status("กำลังอ่านที่อยู่สาธารณะจาก playit.gg …")
-            address = tunnel.wait_for_address(
-                local_port=self.settings.port,
-                name=f"MC {self.instance.name}",
-                log=self.on_log)
+            try:
+                address = tunnel.wait_for_address(
+                    local_port=self.settings.port,
+                    name=f"MC {self.instance.name}",
+                    log=self.on_log)
+            except tunnel.PlayitUnauthorized:
+                # The key stopped working while we were running - start the
+                # linking flow again rather than repeating a 401 forever.
+                self.on_log("[playit] บัญชีหลุดการเชื่อมต่อ — กำลังขอเชื่อมใหม่")
+                tunnel.forget_account()
+                self.agent.stop()
+                self.agent.start()
+                address = ""
             if not address:
                 # A hand-entered address stays as the fallback.
                 address = self.settings.tunnel_address

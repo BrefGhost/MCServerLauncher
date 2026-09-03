@@ -8,6 +8,8 @@ import os
 import queue
 import re
 import sys
+import threading
+import time
 import tkinter as tk
 import webbrowser
 from pathlib import Path
@@ -357,8 +359,9 @@ class App(dnd.tk_base()):
         addr_entry.bind("<Return>", lambda e: self.save_address())
         ttk.Button(addr, text="ก๊อป", command=self.copy_address).grid(
             row=0, column=2, padx=(8, 0))
-        ttk.Button(addr, text="ดูที่ playit.gg",
-                   command=tunnel.open_tunnels_page).grid(row=0, column=3, padx=(6, 0))
+        self.link_btn = ttk.Button(addr, text="เชื่อมบัญชี playit.gg",
+                                   command=self.link_playit)
+        self.link_btn.grid(row=0, column=3, padx=(6, 0))
         ttk.Label(addr, text="โปรแกรมดึงที่อยู่มาให้เองตอนเปิดเซิร์ฟ "
                              "(พิมพ์ทับได้ถ้าอยากใช้ที่อยู่อื่น)",
                   style="PanelMuted.TLabel").grid(row=1, column=1, columnspan=3,
@@ -575,6 +578,61 @@ class App(dnd.tk_base()):
         if text:
             self.log(f"จำที่อยู่ {text} ไว้แล้ว", "ok")
 
+    def link_playit(self) -> None:
+        """Link (or re-link) the playit.gg account without starting a server.
+
+        The link can break at any time - the agent gets deleted on the website,
+        or its key is reset - and the only sign used to be a wall of
+        "401 Unauthorized" with nothing the user could press.
+        """
+        if self.session and self.session.running:
+            messagebox.showinfo(
+                APP_NAME, "กำลังเปิดเซิร์ฟเวอร์อยู่ — กดหยุดก่อนแล้วค่อยเชื่อมบัญชีใหม่")
+            return
+        if tunnel.has_secret() and not messagebox.askyesno(
+                APP_NAME,
+                "ตอนนี้เชื่อมบัญชี playit.gg ไว้แล้ว" + NL + NL
+                + "จะเลิกใช้บัญชีเดิมแล้วเชื่อมใหม่ไหม?" + NL
+                + "(ที่อยู่เซิร์ฟเวอร์จะเปลี่ยน ต้องส่งอันใหม่ให้เพื่อน)"):
+            return
+
+        self.link_btn.config(state="disabled")
+        self.status_var.set("กำลังเชื่อมบัญชี playit.gg …")
+        self.log("กำลังเชื่อมบัญชี playit.gg — จะเปิดหน้าเว็บให้กดยืนยัน", "sys")
+
+        def work() -> None:
+            agent = None
+            try:
+                tunnel.forget_account()
+                agent = tunnel.PlayitAgent(
+                    on_log=lambda line: self.events.put(("log", line)),
+                    on_claim=lambda url: self.events.put(("claim", url)),
+                    on_tunnels=lambda n: self.events.put(("linked", n)))
+                agent.start(progress=lambda msg, pct:
+                            self.events.put(("status", msg)))
+                # The agent prints the claim link, waits for approval, then
+                # writes the key itself. Five minutes is far longer than
+                # pressing one button on a web page takes.
+                for _ in range(300):
+                    if tunnel.has_secret():
+                        break
+                    time.sleep(1.0)
+                if tunnel.has_secret():
+                    self.events.put(("status", "เชื่อมบัญชี playit.gg เรียบร้อย"))
+                    self.events.put(("log", "เชื่อมบัญชี playit.gg เรียบร้อย "
+                                            "กดเริ่มเซิร์ฟเวอร์ได้เลย"))
+                else:
+                    self.events.put(("status", "ยังไม่ได้เชื่อมบัญชี"))
+            except Exception as exc:
+                self.events.put(("log", f"[playit] เชื่อมบัญชีไม่สำเร็จ: {exc}"))
+                self.events.put(("status", "เชื่อมบัญชีไม่สำเร็จ"))
+            finally:
+                if agent is not None:
+                    agent.stop()
+                self.events.put(("linkdone", ""))
+
+        threading.Thread(target=work, daemon=True).start()
+
     def copy_address(self) -> None:
         self.save_address()
         if not self.address:
@@ -732,6 +790,15 @@ class App(dnd.tk_base()):
                     self.players_var_txt.set(
                         "ออนไลน์: " + ", ".join(sorted(payload))
                         if payload else "ยังไม่มีใครออนไลน์")
+                elif kind == "claim":
+                    self.log("เปิดหน้าเว็บนี้แล้วกดยืนยันเพื่อเชื่อมบัญชี:", "sys")
+                    self.log(f"    {payload}", "sys")
+                    webbrowser.open(payload)
+                elif kind == "linked":
+                    if payload:
+                        self.log(f"บัญชีพร้อมใช้งาน ({payload} tunnel)", "ok")
+                elif kind == "linkdone":
+                    self.link_btn.config(state="normal")
                 elif kind == "state":
                     self._on_state(payload)
         except queue.Empty:

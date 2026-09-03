@@ -24,6 +24,7 @@ import re
 import subprocess
 import threading
 import time
+import urllib.error
 import urllib.request
 import webbrowser
 from pathlib import Path
@@ -49,6 +50,14 @@ RE_TUNNEL_COUNT = re.compile(r"tunnel running, (\d+) tunnels registered")
 
 class PlayitError(RuntimeError):
     pass
+
+
+class PlayitUnauthorized(PlayitError):
+    """The stored key is no longer valid - the agent was deleted or reset.
+
+    Worth its own type: everything else is worth retrying, and this is not.
+    Retrying it produced an endless wall of "HTTP Error 401" with no way out.
+    """
 
 
 def clean(text: str) -> str:
@@ -104,11 +113,31 @@ def api(path: str, body: dict | None = None, timeout: float = 30.0) -> dict:
                  "Content-Type": "application/json",
                  "User-Agent": "MCServerLauncher/1.0"},
         method="POST")
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            raise PlayitUnauthorized(
+                "กุญแจ playit.gg ใช้ไม่ได้แล้ว (agent ถูกลบหรือถูกรีเซ็ต)") from exc
+        raise
     if payload.get("status") != "success":
         raise PlayitError(f"playit ตอบกลับว่า: {payload}")
     return payload.get("data") or {}
+
+
+def secret_is_valid() -> bool:
+    """One cheap call that says whether the stored key still works."""
+    if not has_secret():
+        return False
+    try:
+        api("/agents/rundata", timeout=20.0)
+        return True
+    except PlayitUnauthorized:
+        return False
+    except Exception:
+        # A network blip is not proof the key is bad; assume it still is.
+        return True
 
 
 def tunnel_address(tunnel: dict) -> str:
@@ -176,15 +205,21 @@ def wait_for_address(local_port: int = 25565, name: str = "MC Server Launcher",
     """A freshly created tunnel takes a few seconds to get its domain."""
     deadline = time.time() + timeout
     create = True
+    complained = False
     while time.time() < deadline:
         try:
             address = public_address(local_port, name, create, log)
             if address:
                 return address
             create = False          # only ever create one
+        except PlayitUnauthorized:
+            raise                   # nothing to wait for; the caller re-links
         except Exception as exc:
-            if log:
-                log(f"[playit] ยังอ่านที่อยู่ไม่ได้: {exc}")
+            if log and not complained:
+                # Say it once. Repeating it every three seconds buried the
+                # console in identical lines and told the user nothing new.
+                log(f"[playit] ยังอ่านที่อยู่ไม่ได้ กำลังลองใหม่: {exc}")
+                complained = True
         time.sleep(3.0)
     return ""
 
@@ -223,6 +258,13 @@ class PlayitAgent:
         ensure_agent(progress)
         if not has_secret():
             import_existing_secret()
+        # A key for an agent that no longer exists makes the binary stop and ask
+        # "Invalid secret, do you want to reset (Y/n)?" on a stdin nobody can
+        # reach, and it waits there forever. Throw the dead key away first so it
+        # goes straight to printing a fresh claim link instead.
+        if has_secret() and not secret_is_valid():
+            self.on_log("[playit] กุญแจเดิมใช้ไม่ได้แล้ว — จะขอเชื่อมบัญชีใหม่")
+            forget_account()
         DATA_DIR.mkdir(parents=True, exist_ok=True)
 
         self._stopping = False
@@ -230,6 +272,7 @@ class PlayitAgent:
         # full-screen TUI that mangles anything we try to read.
         self.proc = subprocess.Popen(
             [str(PLAYIT_EXE), "--secret_path", str(PLAYIT_SECRET_FILE), "-s", "start"],
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             encoding="utf-8", errors="replace", bufsize=1,
             creationflags=NO_WINDOW)
